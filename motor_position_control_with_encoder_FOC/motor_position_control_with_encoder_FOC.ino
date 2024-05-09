@@ -1,14 +1,14 @@
 #include <SimpleFOC.h>
 #include "SimpleFOCDrivers.h"
-MagneticSensorSPI sensor = MagneticSensorSPI(53, 14, 0x3FFF);
 // #include "encoders/as5048a/MagneticSensorAS5048A.h"
 
 //init our encoder
-// #define SENSOR1_CS 53 // For Unofficoal way of encoder 
+// #define SENSOR1_CS 53 
 // MagneticSensorAS5048A sensor1(SENSOR1_CS);
+MagneticSensorSPI sensor1 = MagneticSensorSPI(53, 14);
 
 // init BLDC motor
-BLDCMotor motor = BLDCMotor( 1 );
+BLDCMotor motor = BLDCMotor(14);
 
 // init driver
 BLDCDriver3PWM driver = BLDCDriver3PWM(9, 10, 11, 8);
@@ -21,16 +21,18 @@ Commander command = Commander(Serial);
 void onTarget(char* cmd){ command.scalar(&target_angle, cmd); }
 
 void setup() {
-  pinMode(12,OUTPUT);
+    // initialise magnetic sensor hardware
+  sensor1.init();
+  // pinMode(12,OUTPUT);
   Serial.begin(115200);
   SimpleFOCDebug::enable();
   // link the motor to the sensor
-  motor.linkSensor(&sensor);
+  motor.linkSensor(&sensor1);
   Serial.println("motor linked");
   
   // power supply voltage
   // default 12V
-  driver.voltage_power_supply = 24;
+  driver.voltage_power_supply = 18;
 
   driver.init();
   // link the motor to the driver                      
@@ -51,7 +53,7 @@ void setup() {
   motor.PID_velocity.output_ramp = 300;
   
   //default voltage_power_supply
-  motor.voltage_limit = 5.6;
+  motor.voltage_limit = 18;
 
   // velocity low pass filtering
   // default 5ms - try different values to see what is the best. 
