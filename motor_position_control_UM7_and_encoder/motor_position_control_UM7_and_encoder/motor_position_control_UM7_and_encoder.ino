@@ -12,26 +12,35 @@ long startTime;
 MagneticSensorSPI sensor1 = MagneticSensorSPI(52, 14);
 
 // init BLDC motor
-BLDCMotor pitch_motor = BLDCMotor(14);
+BLDCMotor roll_motor = BLDCMotor(14);
 
 // init driver
-BLDCDriver3PWM driver = BLDCDriver3PWM(9,10,11,8);
+// BLDCDriver3PWM driver = BLDCDriver3PWM(3, 4, 5, 2); //CS51
+BLDCDriver3PWM driver = BLDCDriver3PWM(7, 8, 9, 6); //CS52
+// BLDCDriver3PWM driver = BLDCDriver3PWM(11, 12, 13, 10); //CS53
+
 
 // angle set point variable
-float target_angle = 0;
+float target_angle = -1.5;
+float initial_angle = 1.5; //TODO: Current value is hard coded, not ideal!
+float error_in_angle = -1.5;
+
+// Define the range of allowed motor movement
+float min_angle = -1.5;
+float max_angle = 1.5;
 
 // commander interface
 Commander command = Commander(Serial);
 void onTarget(char* cmd){ command.scalar(&target_angle, cmd); }
 
 void setup() {
-    // initialise magnetic sensor hardware
+  SimpleFOCDebug::enable(); 
+  // initialise magnetic sensor hardware
   sensor1.init();
-  pinMode(2,INPUT);
-  Serial.begin(115200);
 
+  Serial.begin(115200);
   Serial1.begin(115200);
-  // SimpleFOCDebug::enable();
+  SimpleFOCDebug::enable();
 
   _delay(100);
   // imu init and configure
@@ -50,7 +59,7 @@ void setup() {
   delay(100);
 
   // link the motor to the sensor
-  pitch_motor.linkSensor(&sensor1);
+  roll_motor.linkSensor(&sensor1);
   Serial.println("motor linked");
   
   // power supply voltage
@@ -59,44 +68,51 @@ void setup() {
 
   driver.init();
   // link the motor to the driver                      
-  pitch_motor.linkDriver(&driver);
+  roll_motor.linkDriver(&driver);
   Serial.println("driver linked");
 
   // set control loop to be used
-  pitch_motor.controller = MotionControlType::angle;
+  roll_motor.controller = MotionControlType::angle;
   
   // controller configuration based on the control type 
   // velocity PI controller parameters
   // default P=0.5 I = 10
-  pitch_motor.PID_velocity.P = 0.2;
-  pitch_motor.PID_velocity.I = 10;
-
+  roll_motor.PID_velocity.P = 0.7;
+  roll_motor.PID_velocity.I = 3;
+  // roll_motor.PID_velocity.D = 0.1;
+  
   // jerk control using voltage voltage ramp
   // default value is 300 volts per sec  ~ 0.3V per millisecond
-  pitch_motor.PID_velocity.output_ramp = 400;
+  roll_motor.PID_velocity.output_ramp = 300;
   
   //default voltage_power_supply
-  pitch_motor.voltage_limit = 22;
+  roll_motor.voltage_limit = 12.0;
 
   // velocity low pass filtering
   // default 5ms - try different values to see what is the best. 
   // the lower the less filtered
-  pitch_motor.LPF_velocity.Tf = 0.05;
+  roll_motor.LPF_velocity.Tf = 0.01;
 
   // angle P controller 
   // default P=20
-  pitch_motor.P_angle.P = 20;
+  roll_motor.P_angle.P = 20;
   //  maximal velocity of the position control
   // default 20
-  pitch_motor.velocity_limit = 20;
+  roll_motor.velocity_limit = 10;
   
   // initialize motor1
-  pitch_motor.init();
+  roll_motor.init();
 
   // align encoder and start FOC
-  // pitch_motor.sensor_direction=Direction::CW;
-  // pitch_motor.zero_electric_angle=1.4903;
-  pitch_motor.initFOC();
+  // roll_motor.sensor_direction=Direction::CCW;
+  // roll_motor.zero_electric_angle=2.9061;
+
+  roll_motor.sensor_direction=Direction::CW;
+  roll_motor.zero_electric_angle=2.360;
+
+  roll_motor.initFOC();
+
+
   // startTime = micros();
 
   // add target command T
@@ -111,19 +127,25 @@ void setup() {
 
 void loop() {
   // iterative FOC function
-  pitch_motor.loopFOC();
+  roll_motor.loopFOC();
   // Read data only when it's available from Serial1 on the MCU
   if (Serial1.available()) {  
     
     if (imu.decode(Serial1.read())) { // when IMU has received the package
-        // read pitch from the IMU
-        float pitch = imu.pitch*0.01745;
-        // float pitch_deg=pitch*57.29;
-        target_angle = -pitch;
-        
-        // function calculating the outer position loop and setting the target position 
-        pitch_motor.move(target_angle);
-        Serial.println(target_angle);
+        // read roll from the IMU
+        float roll = imu.roll*0.01745;
+        // error_in_angle = (target_angle - roll ) - sensor1.getAngle();
+        error_in_angle = -(target_angle + roll);
+
+        // Move the motor to the constrained position 
+        roll_motor.move(error_in_angle);
+
+        Serial.print("error_in_angle:");
+        Serial.print(error_in_angle);
+        Serial.print(", sensor_angle:");
+        Serial.print(sensor1.getAngle());
+        Serial.print(", roll:");
+        Serial.println(roll);
     }     
   }
   // user communication
